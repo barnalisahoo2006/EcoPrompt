@@ -55,7 +55,11 @@
     <li>Name it <b>EcoPrompt</b> and paste this URL:
       <div class="url"><code id="mcp-url">https://…/mcp</code><button id="copy" type="button">Copy</button></div>
     </li>
-    <li>Turn it on in a chat from the tools menu, and ask: <i>"Which model should I use for this?"</i></li>
+    <li><b>Make it automatic:</b> in <b>Settings → Profile → personal preferences</b>, paste:
+      <div class="url"><code id="pref">EcoPrompt is on: before answering any new task I give you, call EcoPrompt's recommend_model first, show me its model suggestion and prompt tips, and wait for my go-ahead before doing the task.</code><button id="copy-pref" type="button">Copy</button></div>
+    </li>
+    <li>Ask Claude for anything, e.g. <i>"Write an essay on corporate restructuring"</i>. EcoPrompt suggests a
+      right-sized model and a leaner prompt, and waits for your go-ahead.</li>
   </ol>
   <p>Using Claude Code? Run <code>claude mcp add --transport http ecoprompt <span class="u">URL</span></code>.
      ChatGPT, Cursor and other MCP-compatible tools accept the same URL.</p>
@@ -80,6 +84,9 @@
   document.getElementById("copy").addEventListener("click", async e => {
     track("copy_url");
     try { await navigator.clipboard.writeText(url); e.target.textContent = "Copied"; } catch { /* clipboard blocked */ }
+  });
+  document.getElementById("copy-pref").addEventListener("click", async e => {
+    try { await navigator.clipboard.writeText(document.getElementById("pref").textContent); e.target.textContent = "Copied"; } catch { /* clipboard blocked */ }
   });
   // Anonymous page analytics: only the event name is sent, nothing about the visitor.
   function track(event) {

@@ -22,12 +22,27 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from ecoprompt import advisor, stats
 from ecoprompt.footprint import resolve_model
 
-INSTRUCTIONS = """EcoPrompt helps people use the smallest AI model that is good enough for each task,
-and shows the energy, water and CO2 that saves.
-Before starting a new, substantial task for the user, call `recommend_model` with a short description
-of the task and your own judgement of its complexity. Share the one-line summary with the user so they
-can switch models if they want. When the user says whether they will switch, call `report_choice`.
-Do not include personal or confidential details in the task description."""
+INSTRUCTIONS = """EcoPrompt is ON: the user installed it so that EVERY new request is checked before you answer.
+It helps people use the smallest AI model that is good enough and write prompts that use less energy.
+
+RULE 1. When the user sends a new request or task (writing an essay, email, cover letter or post;
+summarising, translating, explaining, analysing, coding, planning, researching...), your FIRST action
+must be to call `recommend_model`, before any other tool (including document, search or file tools)
+and before writing any answer. Pass a short, anonymised task description (include any length or format
+the user asked for), your judgement of its complexity, and the model you are running as `current_model`.
+
+RULE 2. Your first reply is ONLY the EcoPrompt check, not the task:
+  - the `nudge` line
+  - the `prompt_tips`, each with the energy it saves
+  - a suggested, tighter version of the user's prompt that applies the tips
+  - the `question` (and `how_to_switch` if a model change is suggested)
+Then STOP and wait for the user's answer. Do not start the task in the same reply.
+
+RULE 3. When the user answers, call `report_choice` if a model change was suggested, then do the task,
+using their improved prompt if they accepted it. Do not call `recommend_model` again for the same task.
+
+Skip EcoPrompt for small talk, questions about EcoPrompt itself, and follow-ups or edits to a task already
+checked. Never include personal or confidential details in the task description."""
 
 mcp = MCPServer(
     "EcoPrompt",
@@ -68,11 +83,15 @@ def recommend_model(
     output_length: OutputLength = "medium",
     region: Region = "global",
 ) -> dict[str, Any]:
-    """Recommend the smallest AI model that can handle a task well, with the energy, water and CO2 saved
-    compared with the user's current (or the biggest) model.
+    """REQUIRED FIRST STEP: call this before any other tool and before answering whenever the user sends
+    a new task (essays, emails, summaries, translations, explanations, analysis, coding, planning).
+    Returns the smallest AI model that can handle the task well, the energy, water and CO2 that saves,
+    energy-saving prompt tips, and a question for the user. Show these, then STOP and wait for the user's
+    answer before doing the task (see `next_step` in the result).
 
     Args:
-        task: Short, anonymised description of the task, e.g. "summarise a 2-page article".
+        task: Short, anonymised description of the task, including any length or format the user asked for,
+            e.g. "500-word essay on corporate restructuring" or "summarise a 2-page article".
         complexity: Your judgement of difficulty. simple = summarise/translate/reformat;
             moderate = emails, explanations, short drafts; complex = analysis, coding, reports;
             expert = research, multi-step reasoning, system design. Omit to let EcoPrompt guess.
@@ -101,10 +120,20 @@ def recommend_model(
     return result
 
 
+@mcp.prompt(title="Eco check", description="Get a right-sized model suggestion before doing a task")
+def eco_check(task: str) -> str:
+    """Ask Claude to check EcoPrompt before doing the task."""
+    return (
+        "Before doing this task, call the EcoPrompt `recommend_model` tool with a short, anonymised "
+        "description of it, your judgement of its complexity and the model you are running. Follow its "
+        f"`next_step`: show the check, then wait for my answer.\n\nTask: {task}"
+    )
+
+
 @mcp.tool(annotations=ToolAnnotations(title="Report the user's model choice", read_only_hint=False, open_world_hint=False))
 def report_choice(recommended_model: str, chosen_model: str, ctx: Context) -> dict[str, Any]:
     """Record, anonymously, whether the user switched to the recommended model after `recommend_model`.
-    Call this once the user has decided. It helps measure whether EcoPrompt changes behaviour.
+    Call this as soon as the user answers the EcoPrompt question, then go on to do their task.
 
     Args:
         recommended_model: The model EcoPrompt recommended, e.g. "claude-haiku".

@@ -56,6 +56,7 @@ def test_recommend_simple_task_within_provider():
     assert r["recommended_model"]["id"] == "claude-haiku"
     assert r["savings_per_query"]["energy_percent"] > 90
     assert "Claude Haiku" in r["summary"]
+    assert r["nudge"].startswith("🌱 EcoPrompt: Claude Haiku is enough")
 
 
 def test_recommend_expert_task_keeps_big_model():
@@ -88,6 +89,8 @@ def test_mcp_tools_end_to_end():
 
     async def run():
         async with Client(mcp, client_info=Implementation(name="claude-ai", version="1.0")) as client:
+            prompts = (await client.list_prompts()).prompts
+            assert [p.name for p in prompts] == ["eco_check"]
             names = {t.name for t in (await client.list_tools()).tools}
             assert names == {"recommend_model", "report_choice", "estimate_footprint", "compare_models", "community_impact"}
             rec = await client.call_tool("recommend_model", {"task": "fix grammar in my email", "provider": "chatgpt"})
@@ -163,3 +166,29 @@ def test_old_events_are_deleted(monkeypatch):
     monkeypatch.setattr(stats.time, "time", real_time)
     stats.record_event("page_view")
     assert stats.analytics()["funnel"]["page_views"] == 1
+
+
+def test_recommendation_waits_for_go_ahead_with_tips():
+    r = advisor.recommend("write an essay on corporate restructuring", "complex", current_model="claude-opus-5-5")
+    assert r["wait_for_user"] is True
+    assert r["question"] == "Switch to Claude Sonnet for this, or continue with Claude Opus?"
+    assert "model menu" in r["how_to_switch"]
+    assert "STOP" in r["next_step"]
+    assert r["prompt_tips"][0]["tip"].startswith("Add a length limit")
+    assert r["prompt_tips"][0]["saves_wh_per_reply"] > 0
+
+
+def test_tips_respect_what_the_user_already_specified():
+    from ecoprompt.tips import prompt_tips
+
+    tips = [t["tip"] for t in prompt_tips("500-word essay on restructuring for MBA students", "claude-sonnet")]
+    assert not any("length limit" in t for t in tips)
+    many = prompt_tips("give me 10 ideas for a LinkedIn post", "claude-haiku")
+    assert any("2-3 ideas instead of 10" in t["tip"] and t["saves_wh_per_reply"] > 0 for t in many)
+    assert len(prompt_tips("write an essay", "claude-haiku")) <= 3
+
+
+def test_right_sized_model_still_asks_go_ahead():
+    r = advisor.recommend("design a system architecture", "expert", current_model="claude-opus")
+    assert r["how_to_switch"] is None
+    assert r["question"].startswith("Go ahead")
