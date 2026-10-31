@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoPrompt</title>
+<style>
+  :root {
+    --bg: #f6f8f4; --surface: #ffffff; --text: #1d2a22; --muted: #5b6b60;
+    --accent: #2f7d4f; --accent-soft: #e3f1e7; --border: #d9e3db; --code: #eef3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121815; --surface: #1a221d; --text: #e6efe8; --muted: #9db0a3;
+            --accent: #6cc58f; --accent-soft: #1f3327; --border: #2c3a31; --code: #222c26; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 2.4rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  .tagline { color: var(--muted); font-size: 1.15rem; margin: 0 0 32px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 36px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stat b { display: block; font-size: 1.6rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--muted); }
+  h2 { font-size: 1.25rem; margin: 32px 0 12px; }
+  ol { padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  .url { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: var(--code);
+         border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 12px 0; }
+  .url code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.95rem; }
+  button { background: var(--accent); color: var(--surface); border: 0; border-radius: 8px;
+           padding: 6px 14px; font: inherit; cursor: pointer; }
+  .example { background: var(--accent-soft); border-radius: 12px; padding: 14px 16px; }
+  .fine { color: var(--muted); font-size: 0.9rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Eco<span>Prompt</span></h1>
+  <p class="tagline">Use the smallest AI model that's good enough, and see the energy and water you save.</p>
+
+  <div class="stats" aria-live="polite">
+    <div class="stat"><b id="s-count">–</b><small>recommendations</small></div>
+    <div class="stat"><b id="s-kwh">–</b><small>kWh potentially saved</small></div>
+    <div class="stat"><b id="s-water">–</b><small>litres of water</small></div>
+    <div class="stat"><b id="s-co2">–</b><small>kg CO₂</small></div>
+  </div>
+
+  <h2>Add EcoPrompt to Claude</h2>
+  <ol>
+    <li>Open <b>claude.ai → Settings → Connectors → Add custom connector</b>.</li>
+    <li>Name it <b>EcoPrompt</b> and paste this URL:
+      <div class="url"><code id="mcp-url">https://…/mcp</code><button id="copy" type="button">Copy</button></div>
+    </li>
+    <li>Turn it on in a chat from the tools menu, and ask: <i>"Which model should I use for this?"</i></li>
+  </ol>
+  <p>Using Claude Code? Run <code>claude mcp add --transport http ecoprompt <span class="u">URL</span></code>.
+     ChatGPT, Cursor and other MCP-compatible tools accept the same URL.</p>
+
+  <h2>What it tells you</h2>
+  <p class="example">"This is a <b>simple</b> task: Claude Haiku is good enough. Using it instead of Claude Opus
+     uses about 96% less energy, saving ~2.3 Wh, ~7 mL of water and ~0.9 g CO₂ per query."</p>
+
+  <h2>Privacy</h2>
+  <p>EcoPrompt never stores your prompts. It keeps only an anonymous count: the task's difficulty level,
+     the two model names and the estimated savings. No accounts, names or IP addresses.</p>
+
+  <p class="fine">Numbers are estimates based on published research (Google, Epoch AI, Hugging Face AI Energy Score,
+     LBNL) and can differ from reality by 2–3× either way. Built at Rotterdam School of Management.</p>
+</main>
+<script>
+  const url = location.origin + "/mcp";
+  document.getElementById("mcp-url").textContent = url;
+  document.querySelectorAll(".u").forEach(el => el.textContent = url);
+  document.getElementById("copy").addEventListener("click", async e => {
+    try { await navigator.clipboard.writeText(url); e.target.textContent = "Copied"; } catch { /* clipboard blocked */ }
+  });
+  const fmt = (n, d) => Number(n).toLocaleString(undefined, { maximumFractionDigits: d });
+  fetch("/stats").then(r => r.json()).then(s => {
+    document.getElementById("s-count").textContent = fmt(s.recommendations, 0);
+    document.getElementById("s-kwh").textContent = fmt(s.energy_kwh_saved, 2);
+    document.getElementById("s-water").textContent = fmt(s.water_liters_saved, 1);
+    document.getElementById("s-co2").textContent = fmt(s.co2_kg_saved, 2);
+  }).catch(() => {});
+</script>
+</body>
+</html>
