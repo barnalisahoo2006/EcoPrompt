@@ -81,18 +81,85 @@ def test_invalid_inputs_raise():
 
 def test_mcp_tools_end_to_end():
     from mcp import Client
+    from mcp.types import Implementation
 
+    from ecoprompt import stats
     from server import mcp
 
     async def run():
-        async with Client(mcp) as client:
+        async with Client(mcp, client_info=Implementation(name="claude-ai", version="1.0")) as client:
             names = {t.name for t in (await client.list_tools()).tools}
-            assert names == {"recommend_model", "estimate_footprint", "compare_models", "community_impact"}
+            assert names == {"recommend_model", "report_choice", "estimate_footprint", "compare_models", "community_impact"}
             rec = await client.call_tool("recommend_model", {"task": "fix grammar in my email", "provider": "chatgpt"})
             assert not rec.is_error and rec.structured_content["recommended_model"]["id"] == "gpt-mini"
             bad = await client.call_tool("estimate_footprint", {"model": "not-a-model"})
             assert bad.is_error
+            choice = await client.call_tool("report_choice", {"recommended_model": "gpt-4o-mini", "chosen_model": "gpt-mini"})
+            assert choice.structured_content["recorded"] == "switched"
+            await client.call_tool("report_choice", {"recommended_model": "claude-haiku", "chosen_model": "claude-opus-5-5"})
             impact = await client.call_tool("community_impact", {})
             assert impact.structured_content["recommendations"] == 1
 
     asyncio.run(run())
+    a = stats.analytics()
+    assert a["adoption"] == {"switched": 1, "kept_current": 1, "switch_rate_percent": 50}
+    assert a["by_complexity"][0]["label"] == "simple"
+    assert a["events"]["report_choice"] == 2
+    assert a["by_app"] == [{"label": "Claude", "count": 4}]  # the failed call is not logged
+
+
+def _request(method, path, body=b"", headers=None, query=""):
+    from starlette.requests import Request
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    return Request({"type": "http", "method": method, "path": path, "headers": raw, "query_string": query.encode()}, receive)
+
+
+def test_http_routes_track_and_admin_auth(monkeypatch):
+    import server
+    from ecoprompt import stats
+
+    async def run():
+        assert (await server.track(_request("POST", "/track", b'{"event": "page_view"}'))).status_code == 204
+        assert (await server.track(_request("POST", "/track", b'{"event": "hack"}'))).status_code == 400
+        assert (await server.track(_request("POST", "/track", b"not json"))).status_code == 400
+
+        monkeypatch.delenv("ECOPROMPT_ADMIN_KEY", raising=False)
+        assert (await server.dashboard(_request("GET", "/dashboard"))).status_code == 404
+        assert (await server.analytics_route(_request("GET", "/analytics"))).status_code == 403
+
+        monkeypatch.setenv("ECOPROMPT_ADMIN_KEY", "s3cret")
+        assert (await server.dashboard(_request("GET", "/dashboard", query="key=wrong"))).status_code == 403
+        assert (await server.dashboard(_request("GET", "/dashboard", query="key=s3cret"))).status_code == 200
+        ok = await server.analytics_route(_request("GET", "/analytics", headers={"x-admin-key": "s3cret"}))
+        assert ok.status_code == 200
+
+    asyncio.run(run())
+    assert stats.analytics()["funnel"]["page_views"] == 1
+
+
+def test_normalize_client_drops_details():
+    from ecoprompt.stats import normalize_client
+
+    assert normalize_client("claude-ai") == "Claude"
+    assert normalize_client("claude-code/2.1.314") == "Claude Code"
+    assert normalize_client("Cursor/1.2 (darwin)") == "Cursor"
+    assert normalize_client("my-custom-bot 0.1") == "Other"
+    assert normalize_client(None) == "Unknown"
+
+
+def test_old_events_are_deleted(monkeypatch):
+    import time
+
+    from ecoprompt import stats
+
+    monkeypatch.setenv("ECOPROMPT_RETENTION_DAYS", "1")
+    real_time = time.time
+    monkeypatch.setattr(stats.time, "time", lambda: real_time() - 3 * 86400)
+    stats.record_event("page_view")
+    monkeypatch.setattr(stats.time, "time", real_time)
+    stats.record_event("page_view")
+    assert stats.analytics()["funnel"]["page_views"] == 1

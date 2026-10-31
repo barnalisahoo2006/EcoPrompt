@@ -8,7 +8,8 @@ from __future__ import annotations
 
 LEVEL_NAMES = {1: "simple", 2: "moderate", 3: "complex", 4: "expert"}
 
-# Checked from the hardest level down; the first level with a match wins.
+# Checked in _ORDER; the first level with a match wins. Simple actions (summarise,
+# translate, fix grammar) beat moderate topic words, so "fix grammar in my email" is simple.
 _KEYWORDS: dict[int, tuple[str, ...]] = {
     4: (
         "prove", "proof", "research", "novel", "architecture", "system design", "multi-step", "multistep",
@@ -31,6 +32,8 @@ _KEYWORDS: dict[int, tuple[str, ...]] = {
     ),
 }
 
+_ORDER = (4, 3, 1, 2)
+
 # Tasks this long usually carry enough context to need a stronger model.
 _LONG_TASK_CHARS = 1500
 
@@ -39,7 +42,7 @@ def classify(task: str) -> tuple[int, str]:
     """Return (level 1-4, human-readable reason)."""
     text = task.lower()
     level, reason = 2, "no clear signal, assuming a moderate task"
-    for candidate in (4, 3, 2, 1):
+    for candidate in _ORDER:
         hits = [k for k in _KEYWORDS[candidate] if k in text]
         if hits:
             level, reason = candidate, f"matched '{hits[0]}'"

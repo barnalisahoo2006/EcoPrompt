@@ -11,3 +11,5 @@ services:
         value: 0.0.0.0
       - key: PYTHON_VERSION
         value: 3.13.7
+      - key: ECOPROMPT_ADMIN_KEY
+        generateValue: true

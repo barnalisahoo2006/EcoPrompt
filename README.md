@@ -14,10 +14,25 @@ MCP-compatible tool.
 | `recommend_model` | Right-sized model for a task, with savings vs. your current model |
 | `estimate_footprint` | Energy, water and CO₂ of one query to a given model |
 | `compare_models` | All models ranked by footprint, marked suitable or not for the task |
+| `report_choice` | Logs whether the user switched to the recommended model (adoption rate) |
 | `community_impact` | Anonymous running total of potential savings |
 
 HTTP routes: `/` (landing page with setup steps and live counter), `/mcp` (the connector),
-`/stats` (JSON totals), `/health`.
+`/stats` (public JSON totals), `/track` (landing-page events), `/dashboard` and `/analytics`
+(private, need the admin key), `/health`.
+
+## Usage analytics dashboard
+
+EcoPrompt records anonymous usage events so you can see how people use it:
+
+- **Funnel:** landing page views → copied connector URL → recommendations → choices reported
+- **Adoption:** how often people switch to the recommended model (`report_choice`)
+- **Breakdowns:** AI app (Claude, Claude Code, ChatGPT, Cursor…), task difficulty, provider,
+  models people were on and models recommended, daily activity
+
+Set `ECOPROMPT_ADMIN_KEY` (Render generates one automatically; find it under the service's
+**Environment** tab), then open `https://<your-service>/dashboard?key=<ADMIN_KEY>`. The page drops the
+key from the address bar after loading. Without the variable set, the dashboard is switched off.
 
 ## Run locally
 
@@ -54,8 +69,11 @@ Notes:
 
 ## Privacy
 
-Prompt text is never stored. The counter keeps only the task level, the two model ids and the
-estimated savings. There are no accounts, names or IP addresses.
+Prompt text is never stored. Each event keeps only the event type, the AI app's name, the task
+level, model ids, region, whether the user switched, and the estimated savings. There are no
+accounts, names, emails, IP addresses or per-user IDs, so analytics are aggregate only: it shows
+*how many* people do something, never *who*. Events are deleted after `ECOPROMPT_RETENTION_DAYS`
+(default 365).
 
 ## Methodology
 

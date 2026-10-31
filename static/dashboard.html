@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>EcoPrompt Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f8f4; --surface: #ffffff; --text: #1d2a22; --muted: #5b6b60; --grid: #e4ebe5;
+    --mark: #2f7d4f; --mark-hover: #1f5c39; --border: #d9e3db;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121815; --surface: #1a221d; --text: #e6efe8; --muted: #9db0a3; --grid: #26322a;
+            --mark: #6cc58f; --mark-hover: #93d9ad; --border: #2c3a31; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 56px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; margin-bottom: 20px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  h2 { margin: 0 0 12px; font-size: 1rem; }
+  .muted { color: var(--muted); }
+  .range button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+                  padding: 4px 12px; font: inherit; cursor: pointer; }
+  .range button[aria-pressed="true"] { border-color: var(--mark); color: var(--mark); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+  .tile b { display: block; font-size: 1.9rem; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+  .bars { display: grid; gap: 6px; }
+  .bar-row { display: grid; grid-template-columns: minmax(90px, 140px) 1fr 48px; gap: 8px; align-items: center; }
+  .bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track { height: 14px; }
+  .fill { height: 100%; background: var(--mark); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .col { fill: var(--mark); }
+  .col.hover { fill: var(--mark-hover); }
+  #chart-wrap { position: relative; }
+  #tip { position: absolute; pointer-events: none; background: var(--text); color: var(--bg); padding: 6px 10px;
+         border-radius: 8px; font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity .1s; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+  details { margin-top: 12px; }
+  .empty { color: var(--muted); font-style: italic; }
+  #error { color: #b3261e; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>EcoPrompt dashboard</h1>
+      <div class="muted">Anonymous usage and behaviour. No prompts, names or IP addresses are stored.</div>
+    </div>
+    <div class="range" role="group" aria-label="Time range">
+      <button data-days="7">7 days</button><button data-days="30">30 days</button><button data-days="90">90 days</button>
+    </div>
+  </header>
+  <p id="error" hidden></p>
+
+  <section class="tiles" aria-label="Key numbers">
+    <div class="card tile"><span class="muted">Recommendations</span><b id="k-recs">–</b></div>
+    <div class="card tile"><span class="muted">Switched to lighter model</span><b id="k-switch">–</b><span class="muted" id="k-switch-n"></span></div>
+    <div class="card tile"><span class="muted">Energy potentially saved</span><b id="k-kwh">–</b></div>
+    <div class="card tile"><span class="muted">Water potentially saved</span><b id="k-water">–</b></div>
+  </section>
+
+  <section class="card">
+    <h2>Recommendations per day</h2>
+    <div id="chart-wrap"><svg id="chart" width="100%" height="220" role="img" aria-label="Recommendations per day"></svg><div id="tip"></div></div>
+    <details><summary>Show as table</summary><table id="daily-table"></table></details>
+  </section>
+
+  <div class="grid2">
+    <section class="card"><h2>Funnel (all time)</h2><div class="bars" id="b-funnel"></div></section>
+    <section class="card"><h2>AI app used</h2><div class="bars" id="b-app"></div></section>
+    <section class="card"><h2>Task difficulty</h2><div class="bars" id="b-complexity"></div></section>
+    <section class="card"><h2>Models people were using</h2><div class="bars" id="b-current"></div></section>
+    <section class="card"><h2>Models recommended</h2><div class="bars" id="b-recommended"></div></section>
+    <section class="card"><h2>Providers</h2><div class="bars" id="b-provider"></div></section>
+  </div>
+</main>
+<script>
+  // Keep the admin key in memory only, and drop it from the address bar and history.
+  const params = new URLSearchParams(location.search);
+  const key = params.get("key") || "";
+  history.replaceState(null, "", location.pathname);
+  const fmt = (n, d = 0) => Number(n).toLocaleString(undefined, { maximumFractionDigits: d });
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function bars(id, rows) {
+    const el = document.getElementById(id);
+    if (!rows.length || rows.every(r => !r.count)) { el.innerHTML = '<p class="empty">No data yet</p>'; return; }
+    const max = Math.max(...rows.map(r => r.count), 1);
+    el.innerHTML = rows.map(r => `<div class="bar-row" title="${esc(r.label)}: ${fmt(r.count)}">
+      <span>${esc(r.label)}</span><div class="track"><div class="fill" style="width:${(100 * r.count / max).toFixed(1)}%"></div></div>
+      <span class="num">${fmt(r.count)}</span></div>`).join("");
+  }
+
+  function dailyChart(rows, days) {
+    // Fill missing days with zero so the time axis is continuous.
+    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
+    const series = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      series.push(byDate[d] || { date: d, recommendations: 0, page_views: 0, switches: 0 });
+    }
+    const svg = document.getElementById("chart");
+    const W = svg.clientWidth || 800, H = 220, L = 36, R = 8, T = 10, B = 26;
+    const max = Math.max(...series.map(s => s.recommendations), 1);
+    const step = niceStep(max), top = Math.ceil(max / step) * step;
+    const y = v => T + (H - T - B) * (1 - v / top);
+    const slot = (W - L - R) / series.length, bw = Math.max(slot - 2, 1);
+    let out = "";
+    for (let v = 0; v <= top; v += step) out += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+    series.forEach((s, i) => {
+      const x = L + i * slot + 1, h = y(0) - y(s.recommendations);
+      if (h > 0) out += `<path class="col" data-i="${i}" d="M${x},${y(0)} v${-Math.max(h - 4, 0)} q0,-4 4,-4 h${Math.max(bw - 8, 0)} q4,0 4,4 v${Math.max(h - 4, 0)} z"/>`;
+      out += `<rect data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/>`;
+    });
+    const labelEvery = Math.ceil(series.length / 7);
+    series.forEach((s, i) => { if (i % labelEvery === 0) out += `<text x="${L + i * slot + slot / 2}" y="${H - 8}" text-anchor="middle">${s.date.slice(5)}</text>`; });
+    svg.innerHTML = out;
+
+    const tip = document.getElementById("tip");
+    svg.onmousemove = e => {
+      const i = e.target.dataset && e.target.dataset.i;
+      svg.querySelectorAll(".col").forEach(c => c.classList.toggle("hover", c.dataset.i === i));
+      if (i === undefined) { tip.style.opacity = 0; return; }
+      const s = series[i];
+      tip.innerHTML = `<b>${s.date}</b><br>${fmt(s.recommendations)} recommendations · ${fmt(s.switches)} switches · ${fmt(s.page_views)} page views`;
+      const wrap = svg.getBoundingClientRect();
+      const left = Math.min(e.clientX - wrap.left + 12, wrap.width - tip.offsetWidth - 4);
+      tip.style.left = Math.max(left, 0) + "px"; tip.style.top = "8px"; tip.style.opacity = 1;
+    };
+    svg.onmouseleave = () => { tip.style.opacity = 0; svg.querySelectorAll(".col").forEach(c => c.classList.remove("hover")); };
+
+    document.getElementById("daily-table").innerHTML = "<tr><th>Date</th><th>Recommendations</th><th>Switches</th><th>Page views</th></tr>" +
+      series.slice().reverse().map(s => `<tr><td>${s.date}</td><td>${s.recommendations}</td><td>${s.switches}</td><td>${s.page_views}</td></tr>`).join("");
+  }
+
+  function niceStep(max) {
+    const raw = max / 4, mag = 10 ** Math.floor(Math.log10(raw || 1));
+    return [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw) || 1;
+  }
+
+  async function load(days) {
+    document.querySelectorAll(".range button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.days == days)));
+    const res = await fetch(`/analytics?days=${days}`, { headers: { "x-admin-key": key } });
+    const err = document.getElementById("error");
+    if (!res.ok) { err.hidden = false; err.textContent = "Could not load analytics (check the admin key)."; return; }
+    err.hidden = true;
+    render(await res.json(), days);
+  }
+
+  let last = null;
+  function render(a, days) {
+    last = [a, days];
+    document.getElementById("k-recs").textContent = fmt(a.community.recommendations);
+    document.getElementById("k-switch").textContent = a.adoption.switch_rate_percent === null ? "–" : a.adoption.switch_rate_percent + "%";
+    document.getElementById("k-switch-n").textContent = `${fmt(a.adoption.switched)} switched · ${fmt(a.adoption.kept_current)} kept`;
+    document.getElementById("k-kwh").textContent = fmt(a.community.energy_kwh_saved, 2) + " kWh";
+    document.getElementById("k-water").textContent = fmt(a.community.water_liters_saved, 1) + " L";
+    dailyChart(a.daily, days);
+    const f = a.funnel;
+    bars("b-funnel", [
+      { label: "Landing page views", count: f.page_views }, { label: "Copied connector URL", count: f.copy_url_clicks },
+      { label: "Recommendations", count: f.recommendations }, { label: "Choices reported", count: f.choices_reported },
+    ]);
+    bars("b-app", a.by_app); bars("b-complexity", a.by_complexity); bars("b-current", a.current_models);
+    bars("b-recommended", a.recommended_models); bars("b-provider", a.by_provider);
+  }
+
+  let current = 30;
+  document.querySelectorAll(".range button").forEach(b => b.addEventListener("click", () => load(current = Number(b.dataset.days))));
+  window.addEventListener("resize", () => last && dailyChart(last[0].daily, last[1]));
+  load(current);
+</script>
+</body>
+</html>
