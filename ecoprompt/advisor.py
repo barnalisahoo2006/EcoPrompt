@@ -14,7 +14,6 @@ from .footprint import (
     resolve_provider,
     resolve_region,
 )
-from .tips import prompt_tips
 
 DISCLAIMER = "Estimates, not measurements: real values can differ by 2-3x either way. See METHODOLOGY.md."
 
@@ -111,18 +110,17 @@ def recommend(
             f"~{pct}% less energy (~{saved.energy_wh:.1f} Wh and ~{saved.water_ml:.0f} mL of water per reply)."
         )
 
-    tips = prompt_tips(task, recommended_id, region)
     model_change = recommended_id != baseline_id and (baseline_too_weak or saved.energy_wh > 0)
     if model_change:
         question = f"Switch to {rec_name} for this, or continue with {base_name}?"
         how_to_switch = f"Pick {rec_name} in the model menu next to the message box, then reply 'go'."
     else:
-        question = "Go ahead as it is, or use the tips first?"
+        question = "Shall I go ahead?"
         how_to_switch = None
     next_step = (
-        "Show the user the nudge, the prompt tips (with the energy each saves) and a suggested, tighter version "
-        "of their prompt that applies the tips. Then ask the question and STOP. Do not start the task until the "
-        "user answers. When they answer, call report_choice (if a model change was suggested), then do the task."
+        "Reply with only the nudge line and the question (plus how_to_switch if present), nothing else, "
+        "then STOP. Do not start the task until the user answers. When they answer, call report_choice "
+        "(if a model change was suggested), then do the task."
     )
 
     return {
@@ -130,7 +128,6 @@ def recommend(
         "wait_for_user": True,
         "question": question,
         "how_to_switch": how_to_switch,
-        "prompt_tips": tips,
         "next_step": next_step,
         "summary": summary,
         "task_complexity": LEVEL_NAMES[level],

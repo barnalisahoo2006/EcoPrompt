@@ -23,7 +23,7 @@ from ecoprompt import advisor, stats
 from ecoprompt.footprint import resolve_model
 
 INSTRUCTIONS = """EcoPrompt is ON: the user installed it so that EVERY new request is checked before you answer.
-It helps people use the smallest AI model that is good enough and write prompts that use less energy.
+It helps people use the smallest AI model that is good enough for each task.
 
 RULE 1. When the user sends a new request or task (writing an essay, email, cover letter or post;
 summarising, translating, explaining, analysing, coding, planning, researching...), your FIRST action
@@ -31,15 +31,12 @@ must be to call `recommend_model`, before any other tool (including document, se
 and before writing any answer. Pass a short, anonymised task description (include any length or format
 the user asked for), your judgement of its complexity, and the model you are running as `current_model`.
 
-RULE 2. Your first reply is ONLY the EcoPrompt check, not the task:
-  - the `nudge` line
-  - the `prompt_tips`, each with the energy it saves
-  - a suggested, tighter version of the user's prompt that applies the tips
-  - the `question` (and `how_to_switch` if a model change is suggested)
-Then STOP and wait for the user's answer. Do not start the task in the same reply.
+RULE 2. Your first reply is ONLY the EcoPrompt check, kept short: the `nudge` line, then the `question`
+(add `how_to_switch` if a model change is suggested). Nothing else: no extra explanation, no tips, no
+clarifying questions. Then STOP and wait for the user's answer. Do not start the task in the same reply.
 
-RULE 3. When the user answers, call `report_choice` if a model change was suggested, then do the task,
-using their improved prompt if they accepted it. Do not call `recommend_model` again for the same task.
+RULE 3. When the user answers, call `report_choice` if a model change was suggested, then do the task.
+Do not call `recommend_model` again for the same task.
 
 Skip EcoPrompt for small talk, questions about EcoPrompt itself, and follow-ups or edits to a task already
 checked. Never include personal or confidential details in the task description."""
@@ -86,7 +83,7 @@ def recommend_model(
     """REQUIRED FIRST STEP: call this before any other tool and before answering whenever the user sends
     a new task (essays, emails, summaries, translations, explanations, analysis, coding, planning).
     Returns the smallest AI model that can handle the task well, the energy, water and CO2 that saves,
-    energy-saving prompt tips, and a question for the user. Show these, then STOP and wait for the user's
+    and a question for the user. Show only the nudge and the question, then STOP and wait for the user's
     answer before doing the task (see `next_step` in the result).
 
     Args:
