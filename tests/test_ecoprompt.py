@@ -42,21 +42,61 @@ def test_classify_levels():
 
 def test_bigger_models_use_more_energy_and_water():
     small, big = estimate("claude-haiku", 800, 500), estimate("claude-opus", 800, 500)
-    assert big.energy_wh > 10 * small.energy_wh
+    assert big.energy_wh > 3 * small.energy_wh
     assert big.water_ml > small.water_ml > 0
 
 
 def test_typical_query_is_in_published_range():
-    # A ~500-token answer from a mid/large model should be roughly 0.1-1 Wh.
-    assert 0.1 < estimate("gpt-flagship", 500, 300).energy_wh < 1.0
+    # A ~500-token answer from a large model sits between Epoch AI (~0.3 Wh) and
+    # the ~0.7 Wh implied by Jegham et al.'s GPT-4o figures.
+    assert 0.3 < estimate("gpt-flagship", 500, 300).energy_wh < 0.7
+
+
+def test_reasoning_model_is_calibrated_above_frontier():
+    # Jegham et al. v5: o1 is about 2.27 Wh and o3 about 1.18 Wh at 100 in / 300 out.
+    reasoning = estimate("gpt-reasoning", 300, 100).energy_wh
+    assert 1.18 < reasoning < 2.27
+    assert reasoning > estimate("claude-opus", 300, 100).energy_wh
+
+
+def test_water_and_co2_are_near_published_gpt4o_values():
+    # Jegham et al. v5, derived for GPT-4o at 100 in / 300 out: ~1.9 mL and ~0.15 g.
+    fp = estimate("gpt-flagship", 300, 100)
+    assert 1.0 < fp.water_ml < 3.0
+    assert 0.08 < fp.co2_g < 0.3
+
+
+def test_default_baseline_is_not_a_reasoning_model():
+    r = advisor.recommend("Summarise this article", provider="chatgpt")
+    assert r["compared_with"]["id"] == "gpt-flagship"
+
+
+def test_expert_task_without_current_model_is_not_called_too_hard():
+    r = advisor.recommend("x", complexity="expert", provider="chatgpt")
+    assert r["recommended_model"]["id"] == "gpt-reasoning"
+    assert r["compared_with"]["id"] == "gpt-reasoning"
+    assert "too hard" not in r["summary"]
 
 
 def test_recommend_simple_task_within_provider():
     r = advisor.recommend("Summarise this article", provider="claude", current_model="claude-opus-5-5")
     assert r["recommended_model"]["id"] == "claude-haiku"
-    assert r["savings_per_query"]["energy_percent"] > 90
+    assert 75 < r["savings_per_query"]["energy_percent"] < 90
     assert "Claude Haiku" in r["summary"]
     assert r["nudge"].startswith("🌱 EcoPrompt: Claude Haiku is enough")
+
+
+def test_savings_nudge_links_its_sources():
+    r = advisor.recommend("Summarise this article", current_model="claude-opus")
+    assert "Estimate informed by" in r["nudge"]
+    assert "(https://arxiv.org/abs/2508.15734)" in r["nudge"]
+    assert "(https://arxiv.org/abs/2505.09598)" in r["nudge"]
+    assert len(r["sources"]) == 2
+
+
+def test_nudge_without_figures_has_no_source_links():
+    r = advisor.recommend("x", complexity="expert", current_model="claude-opus")
+    assert "arxiv.org" not in r["nudge"]
 
 
 def test_recommend_expert_task_keeps_big_model():

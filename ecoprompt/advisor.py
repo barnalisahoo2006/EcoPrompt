@@ -17,6 +17,13 @@ from .footprint import (
 
 DISCLAIMER = "Estimates, not measurements: real values can differ by 2-3x either way. See METHODOLOGY.md."
 
+# The figures are EcoPrompt's own estimates, calibrated with these papers, not numbers quoted from them.
+SOURCES = [
+    {"label": "Google, 2025", "title": "Measuring the environmental impact of delivering AI at Google Scale", "url": "https://arxiv.org/abs/2508.15734"},
+    {"label": "Jegham et al., 2025", "title": "How Hungry is AI?", "url": "https://arxiv.org/abs/2505.09598"},
+]
+_SOURCE_LINKS = " and ".join(f"[{s['label']}]({s['url']})" for s in SOURCES)
+
 
 class AdvisorError(ValueError):
     pass
@@ -73,8 +80,12 @@ def recommend(
     candidates = suitable(same_provider) or suitable(list(MODELS))
     recommended_id = min(candidates, key=lambda m: (_energy_rank(m), MODELS[m]["capability"]))
     if baseline_id is None:
-        # No current model given: compare against the biggest model people tend to default to.
-        baseline_id = max(same_provider or list(MODELS), key=_energy_rank)
+        # No current model given: compare against the biggest everyday model. Reasoning models are
+        # an opt-in choice, so using them as the default baseline would inflate the savings.
+        pool = same_provider or list(MODELS)
+        baseline_id = max((m for m in pool if MODELS[m]["energy_class"] != "reasoning"), key=_energy_rank)
+        if MODELS[baseline_id]["capability"] < level and MODELS[recommended_id]["provider"] == MODELS[baseline_id]["provider"]:
+            baseline_id = recommended_id
 
     rec_fp = estimate(recommended_id, out_tokens, in_tokens, region)
     base_fp = estimate(baseline_id, out_tokens, in_tokens, region)
@@ -107,7 +118,8 @@ def recommend(
     else:
         nudge = (
             f"🌱 EcoPrompt: {rec_name} is enough for this {LEVEL_NAMES[level]} task. Switching would use "
-            f"~{pct}% less energy (~{saved.energy_wh:.1f} Wh and ~{saved.water_ml:.0f} mL of water per reply)."
+            f"~{pct}% less energy (~{saved.energy_wh:.1f} Wh and ~{saved.water_ml:.0f} mL of water per reply). "
+            f"Estimate informed by {_SOURCE_LINKS}."
         )
 
     model_change = recommended_id != baseline_id and (baseline_too_weak or saved.energy_wh > 0)
@@ -118,7 +130,9 @@ def recommend(
         question = "Shall I go ahead?"
         how_to_switch = None
     next_step = (
-        "Reply with only the nudge line and the question (plus how_to_switch if present), nothing else, "
+        "Reply with only the nudge line, keeping its source links as markdown hyperlinks and never "
+        "writing out the full URLs, and the question "
+        "(plus how_to_switch if present), nothing else, "
         "then STOP. Do not start the task until the user answers. When they answer, call report_choice "
         "(if a model change was suggested), then do the task."
     )
@@ -140,7 +154,8 @@ def recommend(
         "savings_per_1000_queries": per_1000.as_dict() | {"equivalents": equivalents(per_1000)},
         "assumptions": {"region": region, "output_tokens": out_tokens, "input_tokens": in_tokens},
         "disclaimer": DISCLAIMER,
-        "_stats": {"level": level, "recommended": recommended_id, "baseline": baseline_id, "saved": saved},
+        "sources": SOURCES,
+        "_stats":{"level": level, "recommended": recommended_id, "baseline": baseline_id, "saved": saved},
     }
 
 
@@ -158,6 +173,7 @@ def footprint_of(model: str, output_tokens: int = 800, input_tokens: int = 500, 
         "per_1000_queries": fp.scaled(1000).as_dict() | {"equivalents": equivalents(fp.scaled(1000))},
         "assumptions": {"region": region, "output_tokens": output_tokens, "input_tokens": input_tokens},
         "disclaimer": DISCLAIMER,
+        "sources": SOURCES,
     }
 
 
@@ -176,4 +192,5 @@ def compare(task: str = "", complexity: str | int | None = None, output_length: 
         "models": rows,
         "assumptions": {"region": region, "output_tokens": out_tokens, "input_tokens": in_tokens},
         "disclaimer": DISCLAIMER,
+        "sources": SOURCES,
     }

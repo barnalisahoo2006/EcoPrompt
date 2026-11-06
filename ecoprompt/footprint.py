@@ -12,16 +12,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Server-side energy per 1,000 output tokens (Wh), before data-center overhead.
-# Calibrated so a typical ~500-token answer from a mid-size model lands near the
-# ~0.2-0.3 Wh per prompt reported by Google (2025) and Epoch AI (2025).
+# Calibrated against Epoch AI (2025), Google (2025), Oviedo et al. (2025) and
+# Jegham et al. (2025, v5). See METHODOLOGY.md for the evidence behind each class.
 ENERGY_CLASSES: dict[str, dict] = {
-    "small": {"wh_per_1k_output": 0.10, "label": "Small / fast model"},
-    "medium": {"wh_per_1k_output": 0.40, "label": "Mid-size model"},
-    "large": {"wh_per_1k_output": 1.00, "label": "Large model"},
-    "frontier": {"wh_per_1k_output": 2.50, "label": "Frontier / reasoning model"},
+    "small": {"wh_per_1k_output": 0.30, "label": "Small / fast model"},
+    "medium": {"wh_per_1k_output": 0.50, "label": "Mid-size model"},
+    "large": {"wh_per_1k_output": 0.85, "label": "Large model"},
+    "frontier": {"wh_per_1k_output": 1.70, "label": "Frontier model"},
+    "reasoning": {"wh_per_1k_output": 4.50, "label": "Reasoning model"},
 }
 
 # Reading the prompt (prefill) costs far less per token than generating output.
+# Jegham et al.'s GPT-4o figures imply about 0.06.
 INPUT_TOKEN_WEIGHT = 0.05
 
 # pue: data-center overhead multiplier
@@ -29,8 +31,8 @@ INPUT_TOKEN_WEIGHT = 0.05
 # grid_water_l_per_kwh: water used to generate the electricity
 # grid_kg_co2_per_kwh: carbon intensity of the electricity
 REGIONS: dict[str, dict] = {
-    "global": {"pue": 1.20, "wue_l_per_kwh": 1.0, "grid_water_l_per_kwh": 2.0, "grid_kg_co2_per_kwh": 0.40},
-    "us": {"pue": 1.20, "wue_l_per_kwh": 1.0, "grid_water_l_per_kwh": 3.1, "grid_kg_co2_per_kwh": 0.37},
+    "global": {"pue": 1.20, "wue_l_per_kwh": 1.0, "grid_water_l_per_kwh": 4.35, "grid_kg_co2_per_kwh": 0.40},
+    "us": {"pue": 1.20, "wue_l_per_kwh": 1.0, "grid_water_l_per_kwh": 4.7, "grid_kg_co2_per_kwh": 0.37},
     "eu": {"pue": 1.20, "wue_l_per_kwh": 0.6, "grid_water_l_per_kwh": 1.5, "grid_kg_co2_per_kwh": 0.25},
     "nl": {"pue": 1.20, "wue_l_per_kwh": 0.5, "grid_water_l_per_kwh": 1.2, "grid_kg_co2_per_kwh": 0.30},
 }
@@ -43,7 +45,7 @@ MODELS: dict[str, dict] = {
     "claude-opus": {"name": "Claude Opus", "provider": "anthropic", "capability": 4, "energy_class": "frontier"},
     "gpt-mini": {"name": "GPT mini / nano", "provider": "openai", "capability": 2, "energy_class": "small"},
     "gpt-flagship": {"name": "GPT flagship", "provider": "openai", "capability": 3, "energy_class": "large"},
-    "gpt-reasoning": {"name": "GPT reasoning (o-series / thinking)", "provider": "openai", "capability": 4, "energy_class": "frontier"},
+    "gpt-reasoning": {"name": "GPT reasoning (o-series / thinking)", "provider": "openai", "capability": 4, "energy_class": "reasoning"},
     "gemini-flash": {"name": "Gemini Flash", "provider": "google", "capability": 2, "energy_class": "small"},
     "gemini-pro": {"name": "Gemini Pro", "provider": "google", "capability": 4, "energy_class": "frontier"},
     "mistral-small": {"name": "Mistral Small", "provider": "mistral", "capability": 2, "energy_class": "small"},

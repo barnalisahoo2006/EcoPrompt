@@ -5,7 +5,7 @@ An MCP connector that tells you the **smallest AI model good enough for each tas
 MCP-compatible tool.
 
 > "This is a simple task: Claude Haiku is good enough. Using it instead of Claude Opus uses about
-> 96% less energy, saving ~2.31 Wh, ~6.9 mL of water and ~0.92 g CO2 per query."
+> 82% less energy, saving ~1.35 Wh, ~7.2 mL of water and ~0.54 g CO2 per query."
 
 ## Tools
 
